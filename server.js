@@ -1,4 +1,3 @@
-// backend/server.js
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
@@ -27,7 +26,7 @@ app.get('/', (req, res) => res.send('🚀 Serveur backend Node.js fonctionne !')
 app.post('/upload', upload.single('meme'), (req, res) => {
   if (!req.file) return res.status(400).json({ message: 'Aucun fichier téléchargé' });
 
-  const fileUrl = `http://localhost:3000/uploads/${req.file.filename}`;
+  const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
   res.status(200).json({ message: 'Fichier téléchargé avec succès', url: fileUrl });
 });
 
@@ -38,7 +37,7 @@ app.get('/memes', (req, res) => {
 
     const memeUrls = files
       .filter(f => /\.(png|jpg|jpeg|gif)$/i.test(f))
-      .map(file => `http://localhost:3000/uploads/${file}`);
+      .map(file => `${req.protocol}://${req.get('host')}/uploads/${file}`);
     res.json(memeUrls);
   });
 });
@@ -46,6 +45,5 @@ app.get('/memes', (req, res) => {
 // Servir les fichiers statiques
 app.use('/uploads', express.static(uploadDir));
 
-const PORT = 3000;
-app.listen(PORT, () => console.log(`✅ Serveur démarré sur http://localhost:${PORT}`));
-   
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`✅ Serveur démarré sur port ${PORT}`));
