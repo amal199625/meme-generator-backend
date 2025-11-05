@@ -6,20 +6,30 @@ const fs = require('fs');
 
 const app = express();
 
-// ✅ Middleware CORS global
+// ✅ CORS complet — autorise toutes les origines et types de requêtes
 app.use(cors({
   origin: '*',
-  methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type']
 }));
 
 app.use(express.json());
 
-// 📁 Dossier d’upload
+// ✅ Forcer HTTPS (important sur Render pour éviter la redirection 301)
+app.enable('trust proxy');
+app.use((req, res, next) => {
+  if (req.secure || req.headers['x-forwarded-proto'] === 'https') {
+    next();
+  } else {
+    res.redirect('https://' + req.headers.host + req.url);
+  }
+});
+
+// ✅ Crée le dossier uploads s'il n'existe pas
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
-// ⚙️ Multer (pour upload d’images)
+// ✅ Configuration Multer
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
   filename: (req, file, cb) => cb(null, Date.now() + path.extname(file.originalname))
@@ -27,53 +37,46 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 // ✅ Route test
-app.get('/', (req, res) => res.send('🚀 Backend Node.js Render fonctionne !'));
+app.get('/', (req, res) => res.send('🚀 Serveur backend Node.js fonctionne !'));
 
-// ✅ Upload d’image
+// ✅ Upload meme
 app.post('/upload', upload.single('meme'), (req, res) => {
   if (!req.file) return res.status(400).json({ message: 'Aucun fichier téléchargé' });
-  const fileUrl = `${req.protocol}://${req.get('host')}/file/${req.file.filename}`;
-  res.status(200).json({ message: 'Upload réussi', url: fileUrl });
+  const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+  res.status(200).json({ message: 'Fichier téléchargé avec succès', url: fileUrl });
 });
 
-// ✅ Liste des images
+// ✅ GET tous les memes
 app.get('/memes', (req, res) => {
   fs.readdir(uploadDir, (err, files) => {
     if (err) return res.status(500).json({ message: 'Erreur serveur' });
-    const urls = files
+    const memeUrls = files
       .filter(f => /\.(png|jpg|jpeg|gif)$/i.test(f))
-      .map(f => `${req.protocol}://${req.get('host')}/file/${f}`);
-    res.json(urls);
+      .map(file => `${req.protocol}://${req.get('host')}/uploads/${file}`);
+    res.json(memeUrls);
   });
 });
 
-// ✅ Route spéciale pour Canvas (avec tous les headers CORS corrects)
+// ✅ Servir les fichiers directement sans redirection
 app.get('/file/:filename', (req, res) => {
   const filePath = path.join(uploadDir, req.params.filename);
-  if (!fs.existsSync(filePath)) return res.status(404).send('Fichier introuvable');
+  if (!fs.existsSync(filePath)) return res.status(404).send('Fichier non trouvé');
 
-  // 🔥 Headers CORS + cross-origin pour canvas
-  res.set({
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Cross-Origin-Resource-Policy': 'cross-origin',
-    'Cross-Origin-Embedder-Policy': 'require-corp',
-    'Content-Type': 'image/png'
-  });
+  // ✅ Ajout explicite des headers CORS
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
 
-  fs.createReadStream(filePath).pipe(res);
+  res.sendFile(filePath);
 });
 
-// ✅ (Optionnel) suppression d’un mème
-app.delete('/delete/:filename', (req, res) => {
-  const filePath = path.join(uploadDir, req.params.filename);
-  if (fs.existsSync(filePath)) {
-    fs.unlinkSync(filePath);
-    return res.json({ message: 'Fichier supprimé avec succès' });
+// ✅ Servir les fichiers statiques
+app.use('/uploads', express.static(uploadDir, {
+  setHeaders: (res) => {
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Cross-Origin-Resource-Policy', 'cross-origin');
   }
-  res.status(404).json({ message: 'Fichier introuvable' });
-});
+}));
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`✅ Serveur en ligne sur le port ${PORT}`));
+app.listen(PORT, () => console.log(`✅ Serveur démarré sur port ${PORT}`));
