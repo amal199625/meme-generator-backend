@@ -5,61 +5,75 @@ const path = require('path');
 const fs = require('fs');
 
 const app = express();
+
+// ✅ Middleware CORS global
 app.use(cors({
-  origin: '*', // ✅ Autorise toutes les origines
-  methods: ['GET', 'POST'],
+  origin: '*',
+  methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type']
 }));
+
 app.use(express.json());
 
-// Crée le dossier uploads s'il n'existe pas
+// 📁 Dossier d’upload
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
-// Configuration Multer
+// ⚙️ Multer (pour upload d’images)
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
   filename: (req, file, cb) => cb(null, Date.now() + path.extname(file.originalname))
 });
 const upload = multer({ storage });
 
-// Route test
-app.get('/', (req, res) => res.send('🚀 Backend Node.js fonctionne !'));
+// ✅ Route test
+app.get('/', (req, res) => res.send('🚀 Backend Node.js Render fonctionne !'));
 
-// Upload meme
+// ✅ Upload d’image
 app.post('/upload', upload.single('meme'), (req, res) => {
   if (!req.file) return res.status(400).json({ message: 'Aucun fichier téléchargé' });
-  const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
-  res.status(200).json({ message: 'Fichier téléchargé avec succès', url: fileUrl });
+  const fileUrl = `${req.protocol}://${req.get('host')}/file/${req.file.filename}`;
+  res.status(200).json({ message: 'Upload réussi', url: fileUrl });
 });
 
-// GET tous les memes
+// ✅ Liste des images
 app.get('/memes', (req, res) => {
   fs.readdir(uploadDir, (err, files) => {
     if (err) return res.status(500).json({ message: 'Erreur serveur' });
-    const memeUrls = files
+    const urls = files
       .filter(f => /\.(png|jpg|jpeg|gif)$/i.test(f))
-      .map(file => `${req.protocol}://${req.get('host')}/uploads/${file}`);
-    res.json(memeUrls);
+      .map(f => `${req.protocol}://${req.get('host')}/file/${f}`);
+    res.json(urls);
   });
 });
 
-// ✅ Route proxy spéciale pour Canvas (ajout des bons headers)
+// ✅ Route spéciale pour Canvas (avec tous les headers CORS corrects)
 app.get('/file/:filename', (req, res) => {
   const filePath = path.join(uploadDir, req.params.filename);
   if (!fs.existsSync(filePath)) return res.status(404).send('Fichier introuvable');
 
+  // 🔥 Headers CORS + cross-origin pour canvas
   res.set({
-    'Access-Control-Allow-Origin': '*', // ✅ Permet au canvas d'accéder à l'image
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
     'Cross-Origin-Resource-Policy': 'cross-origin',
+    'Cross-Origin-Embedder-Policy': 'require-corp',
     'Content-Type': 'image/png'
   });
 
   fs.createReadStream(filePath).pipe(res);
 });
 
-// Servir les fichiers statiques
-app.use('/uploads', express.static(uploadDir));
+// ✅ (Optionnel) suppression d’un mème
+app.delete('/delete/:filename', (req, res) => {
+  const filePath = path.join(uploadDir, req.params.filename);
+  if (fs.existsSync(filePath)) {
+    fs.unlinkSync(filePath);
+    return res.json({ message: 'Fichier supprimé avec succès' });
+  }
+  res.status(404).json({ message: 'Fichier introuvable' });
+});
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`✅ Serveur démarré sur port ${PORT}`));
+app.listen(PORT, () => console.log(`✅ Serveur en ligne sur le port ${PORT}`));
